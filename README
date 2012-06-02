@@ -1,0 +1,8 @@
+WebSocket Server using WinSock
+
+Inital Release Currently Not functional.
+
+TODO:
+	-Add Support for Berkely Sockets
+	-Handle Multiple Clients
+	-Support latest standard for WebSocket
