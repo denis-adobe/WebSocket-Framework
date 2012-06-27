@@ -1,12 +1,15 @@
 CC=g++
 OBJECTS=Base64Encoder.o sha1.o WebSocket.o main.o
 PROJECT=WebSocket
-EXECUTABLE=WebSocket
+ARGS=-lpthread
 
-all: $(EXECUTABLE)
+all: $(PROJECT)
+	
 
 $(PROJECT): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(PROJECT)
+	@echo "\n\n"
+	$(CC) $(OBJECTS) -o $(PROJECT) $(ARGS)
+	@rm -rf $(OBJECTS)
 
 main.o: main.cpp
 	$(CC) -c main.cpp
@@ -19,6 +22,3 @@ sha1.o: sha1.cpp sha1.h
 
 WebSocket.o: WebSocket.cpp WebSocket.h
 	$(CC) -c WebSocket.cpp
-
-clean:
-	rm -rf $(OBJECTS)

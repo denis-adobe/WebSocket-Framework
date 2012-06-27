@@ -48,7 +48,7 @@ protected:
 #endif
 
 #ifdef __unix__
-	unsigned int clientThread(void* param);
+	static void *clientThread(void* param);
 #endif
 public:
 	WebSocket(u_short port);
@@ -80,13 +80,15 @@ private:
 
 struct WebSocketClient {
 		WebSocketClient(WebSocket *_self,SOCKET _sock,int _version) : 
-				self(_self), sock(_sock), version(_version) { id = self->getClientSize() + 1; };
+				self(_self), sock(_sock), version(_version) { id = self->getClientSize(); };
 		SOCKET sock;
 		int version;
 		int id;
 		WebSocket* self;
-#ifdef _WIN32
+#if defined(_WIN32)
 		HANDLE handle;
+#elif defined(__unix__)
+		pthread_t handle;
 #endif
 };
 

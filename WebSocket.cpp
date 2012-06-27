@@ -72,8 +72,7 @@ bool WebSocket::isValidClient(WebSocketClient *client)
 }
 WebSocketClient *WebSocket::AcceptClient()
 {
-	struct sockaddr info;
-	SOCKET client = accept(webSock,&info,NULL);
+	SOCKET client = accept(webSock,NULL,NULL);
 
 	if(client == SOCKET_ERROR) {
 		std::cout << "Invalid Client Socket...\n";
@@ -90,14 +89,19 @@ void WebSocket::CreateNewClient(WebSocketClient *client)
 #ifdef _WIN32
 	client->handle = (HANDLE)_beginthreadex(NULL,0,&WebSocket::clientThread,client,NULL,NULL);
 #endif
+
+#ifdef __unix__
+	pthread_create(&client->handle,NULL,WebSocket::clientThread,client);
+#endif
+
 	clients.push_back(client);
-	std::cout << "Client Connected..." << std::endl;
+	std::cout << "Client Connected with id of " << client->id << "..." << std::endl;
 }
 
 #ifdef _WIN32
 unsigned __stdcall WebSocket::clientThread(void* param)
 #elif defined(__unix__)
-unsigned int WebSocket::clientThread(void* param)
+void *WebSocket::clientThread(void* param)
 #endif
 {
 	WebSocketClient *client = static_cast<WebSocketClient*>(param);
@@ -111,23 +115,23 @@ unsigned int WebSocket::clientThread(void* param)
 
 	if(!self->HandShakeClient(&client->sock,buff)) {
 		self->CloseClient(client);
-		return 0;
+		return NULL;
 	}
 
 	do {
-		recvBytes = recv(client->sock,buff,sizeof(buff),NULL);
+		recvBytes = recv(client->sock,buff,sizeof(buff),0);
 		
 		if(recvBytes > 0) {
-			std::cout << "Received " << recvBytes << " from client.." << std::endl;
+			std::cout << "Received " << recvBytes << " bytes from client[" << client->id << "].." << std::endl;
 		}
 		
 	} while(recvBytes > 0); 
-	
+
+	std::cout << "Client " << client->id << " Disconnected...\n";
+
 	self->CloseClient(client);
 
-	std::cout << "Client Disconnected...\n";
-
-	return 0;
+	return NULL;
 	
 }
 
@@ -138,7 +142,19 @@ void WebSocket::CloseClient(WebSocketClient *client)
 	CloseHandle(client->handle);
 #endif
 
-	clients.erase(clients.begin() + (client->id -1));
+#ifdef __unix__
+	close(client->sock);
+#endif
+
+	std::vector<WebSocketClient*>::iterator it;
+	for(it = clients.begin(); it != clients.end(); ++it) {
+		if(*it == client) {
+			clients.erase(it);
+			break;
+		}
+	}
+
+	// Remove client from vector somehow here
 
 	delete client;
 }
@@ -193,7 +209,7 @@ bool WebSocket::HandShakeClient(SOCKET *webclient, std::string clientHandshake)
 	
 	handshake += "\r\n";
 
-	int sent = send(*webclient,handshake.c_str(),handshake.length(),NULL);
+	int sent = send(*webclient,handshake.c_str(),handshake.length(),0);
 
 	if(sent > 0)
 		return true;
