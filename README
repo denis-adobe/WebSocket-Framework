@@ -1,8 +1,6 @@
 WebSocket Server using WinSock
 
-Inital Release Currently Not functional.
+Fully Functional WebSocket Server
 
 TODO:
-	-Add Support for Berkely Sockets
-	-Handle Multiple Clients
-	-Support latest standard for WebSocket
+	- Add support for WebSocket V13 frames.
