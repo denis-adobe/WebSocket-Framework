@@ -2,8 +2,8 @@
 
 int main(int argc, char**argv)
 {
-	WebSocket* webSocket = new WebSocket(8181);
-	webSocket->Listen();
+	WebSocket::WServer* server = new WebSocket::WServer(8181);
+	server->Listen();
 
 	return 0;
 }

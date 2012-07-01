@@ -1,19 +1,35 @@
 #include "WebSocket.h"
 
-WebSocket::WebSocket(u_short port) : _port(port)
+using namespace WebSocket;
+
+WServer::WServer(u_short port) : _port(port)
 {
 #ifdef _WIN32
 	if(WSAStartup(MAKEWORD(2,2),&wsData) != 0) {
-		WebSocket::Error();
+		Error();
 	}
 #endif
 	if((webSock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == INVALID_SOCKET) {
-		WebSocket::Error();
+		Error();
 	}
-
 }
 
-WebSocket::~WebSocket()
+void WServer::registerCallback(WSCallbackType type, void *func(void*))
+{
+	std::pair<callbackTemplate::iterator,bool> r;
+	callbackMap.insert(
+
+	);
+	/*
+	if(!r.second) {
+		callbackMap.erase(type);
+		callbackMap.insert(
+			std::pair<WSCallbackType,void*>(type,func)
+		);
+	}*/
+}
+
+WServer::~WServer()
 {
 #ifdef _WIN32
 	closesocket(webSock);
@@ -26,7 +42,7 @@ WebSocket::~WebSocket()
 #endif
 }
 
-void WebSocket::Error()
+void WServer::Error()
 {
 #ifdef _WIN32
 	std::cout << "FATAL ERROR! Code: " << WSAGetLastError() << std::endl;
@@ -37,7 +53,7 @@ void WebSocket::Error()
 #endif
 }
 
-void WebSocket::Listen()
+void WServer::Listen()
 {
 	const int MAX_BUF_LEN = 1024;
 	
@@ -46,66 +62,86 @@ void WebSocket::Listen()
 	addr.sin_port = htons(_port);
 
 	if(bind(webSock,(struct sockaddr *)&addr,sizeof(addr)) == SOCKET_ERROR) {
-		WebSocket::Error();
+		Error();
 	}
 
 	if(listen(webSock,SOMAXCONN ) == SOCKET_ERROR) {
-		WebSocket::Error();
+		Error();
 	}
 	std::cout << "Listening for connections on port " << _port << "\n\n\n\n";
 
 	while(webSock) {
-		WebSocketClient *webClient = AcceptClient(); // Allocate off the heap
+		WSClient *webClient = AcceptClient(); // Allocate off the heap
 
-		if(isValidClient(webClient))
+		if(isValidClient(webClient,false))
 			CreateNewClient(webClient);
 	}
 
-	WebSocket::Error();
+	Error();
 }
 
-bool WebSocket::isValidClient(WebSocketClient *client)
+bool WServer::isValidClient(WSClient *client, bool checkVer)
 {
-	if(client->sock != INVALID_SOCKET && (ClientVersion)client->version != 0)
-		return true;
+	if(client->sock != INVALID_SOCKET) {
+		if(checkVer) {
+			if((WSClientVersion)client->version == 0)
+				return false;
+		} return true;
+	}
 	return false;
 }
-WebSocketClient *WebSocket::AcceptClient()
+WSClient *WServer::AcceptClient()
 {
-	SOCKET client = accept(webSock,NULL,NULL);
+	struct sockaddr_in addr;
 
-	if(client == SOCKET_ERROR) {
-		std::cout << "Invalid Client Socket...\n";
-		WebSocket::Error();
-		return new WebSocketClient(this,-1,13);
-	}
-
-	return new WebSocketClient(this,client,13);
-	
-}
-
-void WebSocket::CreateNewClient(WebSocketClient *client)
-{
 #ifdef _WIN32
-	client->handle = (HANDLE)_beginthreadex(NULL,0,&WebSocket::clientThread,client,NULL,NULL);
+	int length = sizeof(addr);
+	SOCKET client = accept(webSock,(sockaddr*)&addr,&length);
 #endif
 
 #ifdef __unix__
-	pthread_create(&client->handle,NULL,WebSocket::clientThread,client);
+	socklen_t length = sizeof(addr);
+	SOCKET client = accept(webSock,(sockaddr*)&addr,length);
 #endif
 
+	const char* ipAddr = inet_ntoa(addr.sin_addr);
+
+	if(client == SOCKET_ERROR) {
+		std::cout << "Invalid Client Socket...\n";
+		Error();
+		return new WSClient(this,-1,NULL);
+	}
+
+	return new WSClient(this,client,ipAddr);
+}
+
+void WServer::CreateNewClient(WSClient *client)
+{
+#ifdef _WIN32
+	client->handle = (HANDLE)_beginthreadex(NULL,0,&WServer::clientThread,client,NULL,NULL);
+#endif
+
+#ifdef __unix__
+	pthread_create(&client->handle,NULL,WServer::clientThread,client);
+#endif
+
+	/*callbackTemplate::iterator cIt = callbackMap.find(WSCallbackType::ON_OPEN);
+	if(cIt != callbackMap.end()) {
+		cIt->second(NULL);
+	}*/
+
 	clients.push_back(client);
-	std::cout << "Client Connected with id of " << client->id << "..." << std::endl;
+	std::cout << "Client Connected with id of " << client->id << " {" << client->ip << "} ..." << std::endl;
 }
 
 #ifdef _WIN32
-unsigned __stdcall WebSocket::clientThread(void* param)
+unsigned __stdcall WServer::clientThread(void* param)
 #elif defined(__unix__)
-void *WebSocket::clientThread(void* param)
+void *WServer::clientThread(void* param)
 #endif
 {
-	WebSocketClient *client = static_cast<WebSocketClient*>(param);
-	WebSocket *self = client->self;
+	WSClient *client = static_cast<WSClient*>(param);
+	WServer *self = client->self;
 
 	int recvBytes;
 	char buff[1024];
@@ -113,7 +149,7 @@ void *WebSocket::clientThread(void* param)
 
 	int handshake = recv(client->sock,buff,sizeof(buff),0);
 
-	if(!self->HandShakeClient(&client->sock,buff)) {
+	if(!self->HandShakeClient(client,buff)) {
 		self->CloseClient(client);
 		return NULL;
 	}
@@ -122,12 +158,16 @@ void *WebSocket::clientThread(void* param)
 		recvBytes = recv(client->sock,buff,sizeof(buff),0);
 		
 		if(recvBytes > 0) {
-			std::cout << "Received " << recvBytes << " bytes from client[" << client->id << "].." << std::endl;
+			std::cout << "Received " << recvBytes << " bytes from client[" << client->id << "] {" << client->ip << "}.." << std::endl;
+			/*callbackTemplate::iterator cIt = self->callbackMap.find(WSCallbackType::ON_CLOSE);
+			if(cIt != self->callbackMap.end()) {
+				cIt->second((void*)buff);
+			}*/
 		}
 		
 	} while(recvBytes > 0); 
 
-	std::cout << "Client " << client->id << " Disconnected...\n";
+	std::cout << "Client " << client->id << " {" << client->ip << "}  Disconnected...\n";
 
 	self->CloseClient(client);
 
@@ -135,7 +175,7 @@ void *WebSocket::clientThread(void* param)
 	
 }
 
-void WebSocket::CloseClient(WebSocketClient *client)
+void WServer::CloseClient(WSClient *client)
 {
 #ifdef _WIN32
 	closesocket(client->sock);
@@ -146,7 +186,12 @@ void WebSocket::CloseClient(WebSocketClient *client)
 	close(client->sock);
 #endif
 
-	std::vector<WebSocketClient*>::iterator it;
+	/*callbackTemplate::iterator cIt = callbackMap.find(WSCallbackType::ON_CLOSE);
+	if(cIt != callbackMap.end()) {
+		cIt->second(NULL);
+	}*/
+
+	std::vector<WSClient*>::iterator it;
 	for(it = clients.begin(); it != clients.end(); ++it) {
 		if(*it == client) {
 			clients.erase(it);
@@ -154,12 +199,10 @@ void WebSocket::CloseClient(WebSocketClient *client)
 		}
 	}
 
-	// Remove client from vector somehow here
-
 	delete client;
 }
 
-handshakeMap WebSocket::parseClientHandshake(std::string clientHandShake)
+handshakeMap WServer::parseClientHandshake(std::string clientHandShake)
 {
 	handshakeMap toReturn;
 
@@ -183,12 +226,14 @@ handshakeMap WebSocket::parseClientHandshake(std::string clientHandShake)
 	return toReturn;
 }
 
-bool WebSocket::HandShakeClient(SOCKET *webclient, std::string clientHandshake)
+bool WServer::HandShakeClient(WSClient *client, std::string clientHandshake)
 {
 	handshakeMap clientMap = parseClientHandshake(clientHandshake);
 
-	if(clientMap["Sec-WebSocket-Version"] != "13") {
-		std::cout << "Client attempting to connect with a WebSocket version of " << clientMap["Sec-WebSocket-Version"] << ". This version is unsupported...\n";
+	client->version = atoi(clientMap["Sec-WebSocket-Version"].c_str());
+
+	if(!isValidClient(client,true)) {
+		std::cout << "Error: Invalid Client LN196\n";
 		return false;
 	}
 
@@ -209,7 +254,7 @@ bool WebSocket::HandShakeClient(SOCKET *webclient, std::string clientHandshake)
 	
 	handshake += "\r\n";
 
-	int sent = send(*webclient,handshake.c_str(),handshake.length(),0);
+	int sent = send(client->sock,handshake.c_str(),handshake.length(),0);
 
 	if(sent > 0)
 		return true;

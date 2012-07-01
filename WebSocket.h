@@ -13,7 +13,11 @@
 #include <sstream>
 #include "sha1.h"
 #include "Base64Encoder.h"
+#include "WSFrame.h"
 
+#if defined __APPLE__ // Stupid Apple...
+#define __unix__
+#endif
 
 #if defined _WIN32
 	#include <WinSock2.h>
@@ -29,67 +33,84 @@
 	#include <netinet/in.h>
 	#include <arpa/inet.h>
 	#include <pthread.h>
+	#include <stdlib.h> // atoi
 #endif
 
-typedef std::map<std::string, std::string> handshakeMap;
-struct WebSocketClient;
-
-
-class WebSocket
+namespace WebSocket
 {
-protected:
+		typedef std::map<std::string, std::string> handshakeMap;
+		struct WSClient;
 
-	SOCKET webSock;
-	struct sockaddr_in addr;
+		enum WSCallbackType
+		{
+			ON_OPEN,
+			ON_CLOSE,
+			ON_RECV,
+		};
+
+		typedef std::map<WSCallbackType,void(void*)> callbackTemplate;
+
+		enum WSClientVersion
+		{
+			WS_VER8 = 8,
+			WS_VER13 = 13,
+		};
+
+		class WServer
+		{
+		protected:
+			SOCKET webSock;
+			struct sockaddr_in addr;
 
 #ifdef _WIN32
-	WSAData wsData;
-	static unsigned __stdcall clientThread(void* param);
+			WSAData wsData;
+			static unsigned __stdcall clientThread(void* param);
 #endif
 
 #ifdef __unix__
-	static void *clientThread(void* param);
+			static void *clientThread(void* param);
 #endif
-public:
-	WebSocket(u_short port);
-	~WebSocket();
+		public:
+			WServer(u_short port);
+			~WServer();
 
-	void Listen();
-	void CloseClient(WebSocketClient *client);
-	inline int getClientSize() { return clients.size(); }
-private:
-	enum ClientVersion
-	{
-		WS_VER8 = 8,
-		WS_VER13 = 13,
-	};
+			void registerCallback(WSCallbackType type, void *(func)(void*));
 
-	WebSocketClient *AcceptClient();
-	bool HandShakeClient(SOCKET *webclient, std::string clientHandshake);
-	handshakeMap parseClientHandshake(std::string clientHandShake);
-	void Error();
+			void Listen();
+			void CloseClient(WSClient *client);
+			inline int getClientSize() { return clients.size(); }
+		private:
 
-	bool isValidClient(WebSocketClient *client);
+			WSClient *AcceptClient();
+			bool HandShakeClient(WSClient *client, std::string clientHandshake);
+			handshakeMap parseClientHandshake(std::string clientHandShake);
+			void Error();
 
-	void CreateNewClient(WebSocketClient *client);
+			bool isValidClient(WSClient *client,bool checkVer);
 
-	u_short _port;
+			void CreateNewClient(WSClient *client);
 
-	std::vector<WebSocketClient*> clients;
-};
+			u_short _port;
 
-struct WebSocketClient {
-		WebSocketClient(WebSocket *_self,SOCKET _sock,int _version) : 
-				self(_self), sock(_sock), version(_version) { id = self->getClientSize(); };
-		SOCKET sock;
-		int version;
-		int id;
-		WebSocket* self;
+			std::vector<WSClient*> clients;
+			callbackTemplate callbackMap;
+		};
+
+		struct WSClient {
+				WSClient(WServer *_self,SOCKET _sock, const char* _ip) : 
+						self(_self), sock(_sock), ip(_ip) { id = self->getClientSize(); };
+				SOCKET sock;
+				int version;
+				int id;
+				WServer* self;
+				const char* ip;
 #if defined(_WIN32)
-		HANDLE handle;
+				HANDLE handle;
 #elif defined(__unix__)
-		pthread_t handle;
+				pthread_t handle;
 #endif
-};
+		};
+
+}; // namespace WebSocket
 
 #endif // __WEBSOCKET_H
