@@ -11,6 +11,7 @@
 #include <vector>
 #include <map>
 #include <sstream>
+#include <utility>
 #include "sha1.h"
 #include "Base64Encoder.h"
 #include "WSFrame.h"
@@ -40,15 +41,23 @@ namespace WebSocket
 {
 		typedef std::map<std::string, std::string> handshakeMap;
 		struct WSClient;
+		struct CBWrapper;
 
 		enum WSCallbackType
 		{
+			OPEN,
+			ON_OPEN_BLOCKING,
 			ON_OPEN,
+			CLOSE,
+			ON_CLOSE_BLOCKING,
 			ON_CLOSE,
-			ON_RECV,
+			RECV,
+			ON_RECV_BLOCKING,
+			ON_RECV
 		};
 
-		typedef std::map<WSCallbackType,void(void*)> callbackTemplate;
+		typedef void (*CallBack)(void*);
+		typedef std::map<WSCallbackType,CallBack> callbackTemplate;
 
 		enum WSClientVersion
 		{
@@ -74,7 +83,7 @@ namespace WebSocket
 			WServer(u_short port);
 			~WServer();
 
-			void registerCallback(WSCallbackType type, void *(func)(void*));
+			void registerCallback(WSCallbackType type, void (*func)(void*));
 
 			void Listen();
 			void CloseClient(WSClient *client);
@@ -85,6 +94,18 @@ namespace WebSocket
 			bool HandShakeClient(WSClient *client, std::string clientHandshake);
 			handshakeMap parseClientHandshake(std::string clientHandShake);
 			void Error();
+
+
+			bool callbackExists(WSCallbackType type);
+			bool unregisterCallback(WSCallbackType type);
+			void parseCallback(WSCallbackType type,void* p);
+#ifdef _WIN32
+			static unsigned __stdcall callbackWrapper(void* param);
+#endif
+
+#ifdef __unix__
+			static void *callbackWrapper(void* param);
+#endif
 
 			bool isValidClient(WSClient *client,bool checkVer);
 
@@ -109,6 +130,15 @@ namespace WebSocket
 #elif defined(__unix__)
 				pthread_t handle;
 #endif
+		};
+
+		struct CBWrapper {
+				CBWrapper(WSCallbackType _type, void* _param, WServer *_self) : type(_type),
+					param(_param), self(_self) { };
+
+				void* param;
+				WSCallbackType type;
+				WServer *self;
 		};
 
 }; // namespace WebSocket
