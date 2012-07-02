@@ -4,3 +4,54 @@ Fully Functional WebSocket Server
 
 TODO:
 	- Add support for WebSocket V13 frames.
+
+Compiling:
+	Compiled with VS2010 on Windows and G++ 4.6.3 on Ubuntu & Mac OSX Lion
+
+	Linux Variants:
+		Open a CLI in the working directory and run make then launch the Server by executing
+		./WebSocket
+	Windows:
+		Compile with VS2008+
+
+
+API Usage:
+	So far I have just implemented simple callbacks as such:
+		ON_OPEN: When the client connects to the websocket server before its handshaken.
+		ON_CLOSE: When the client has disconnected from the server
+		ON_RECV: When the client has sent data
+
+	There are two forms of callback types blocking and non blocking pretty self explanatory:
+		ON_OPEN_BLOCKING: Blocks ON_OPEN
+		ON_CLOSE_BLOCKING: Blocks ON_CLOSE
+		ON_RECV_BLOCKING: Blocks RECV
+
+
+	Example:
+		void foo(void* param);
+		void bar(void* param);
+		void foobar(void* param);
+
+		WebSocket::WServer *server = new WebSocket::WServer(8181);
+		
+		server->registerCallback(WebSocket::ON_OPEN,foo);
+		server->registerCallback(WebSocket::ON_CLOSE_BLOCKING,bar);
+		server->registerCallback(WebSocket::ON_RECV_BLOCKING,foobar);
+
+		server->Listen();
+
+	Format for creating API Methods:
+		As of current there is only one implementation where the void star paramater matters and thats ON_RECV & ON_RECV_BLOCKING. If you implement a function with RECV it will pass the data received as the void pointer.
+
+		Example:
+			void foo(void* param)
+			{
+				char* data = (char*)param;
+
+				std::cout << "Data: " << data << std::endl;
+			}
+
+			server->registerCallback(WebSocket::ON_RECV,foo);
+
+		General Method Format:
+			void METHODNAME(void* PARAMNAME);
