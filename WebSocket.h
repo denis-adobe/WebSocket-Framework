@@ -16,7 +16,7 @@
 #include "Base64Encoder.h"
 #include "WSFrame.h"
 
-#if defined __APPLE__ // Stupid Apple...
+#if defined __APPLE__
 #define __unix__
 #endif
 
@@ -41,23 +41,6 @@ namespace WebSocket
 {
 		typedef std::map<std::string, std::string> handshakeMap;
 		struct WSClient;
-		struct CBWrapper;
-
-		enum WSCallbackType
-		{
-			OPEN,
-			ON_OPEN_BLOCKING,
-			ON_OPEN,
-			CLOSE,
-			ON_CLOSE_BLOCKING,
-			ON_CLOSE,
-			RECV,
-			ON_RECV_BLOCKING,
-			ON_RECV
-		};
-
-		typedef void (*CallBack)(void*);
-		typedef std::map<WSCallbackType,CallBack> callbackTemplate;
 
 		enum WSClientVersion
 		{
@@ -81,31 +64,21 @@ namespace WebSocket
 #endif
 		public:
 			WServer(u_short port);
-			~WServer();
-
-			void registerCallback(WSCallbackType type, void (*func)(void*));
+			virtual ~WServer();
 
 			void Listen();
 			void CloseClient(WSClient *client);
 			inline int getClientSize() { return clients.size(); }
 		private:
-
+			
+			virtual void OnRecv(char* buffer, WSClient *client) { } = 0;
+			virtual void OnConnect(WSCLient *client) { } = 0;
+			virtual void OnDisconnect(WSClient *client) { } = 0;
+			
 			WSClient *AcceptClient();
 			bool HandShakeClient(WSClient *client, std::string clientHandshake);
 			handshakeMap parseClientHandshake(std::string clientHandShake);
 			void Error();
-
-
-			bool callbackExists(WSCallbackType type);
-			bool unregisterCallback(WSCallbackType type);
-			void parseCallback(WSCallbackType type,void* p);
-#ifdef _WIN32
-			static unsigned __stdcall callbackWrapper(void* param);
-#endif
-
-#ifdef __unix__
-			static void *callbackWrapper(void* param);
-#endif
 
 			bool isValidClient(WSClient *client,bool checkVer);
 
@@ -130,15 +103,6 @@ namespace WebSocket
 #elif defined(__unix__)
 				pthread_t handle;
 #endif
-		};
-
-		struct CBWrapper {
-				CBWrapper(WSCallbackType _type, void* _param, WServer *_self) : type(_type),
-					param(_param), self(_self) { };
-
-				void* param;
-				WSCallbackType type;
-				WServer *self;
 		};
 
 }; // namespace WebSocket
