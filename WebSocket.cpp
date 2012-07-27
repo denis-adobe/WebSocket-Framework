@@ -14,115 +14,6 @@ WServer::WServer(u_short port) : _port(port)
 	}
 }
 
-bool WServer::callbackExists(WSCallbackType type)
-{
-	callbackTemplate::iterator it = callbackMap.find(type);
-	if(it != callbackMap.end()) 
-		return true;
-	return false;
-}
-
-bool WServer::unregisterCallback(WSCallbackType type)
-{
-	callbackTemplate::iterator it = callbackMap.find(type);
-	if(it != callbackMap.end())
-		return false;
-	callbackMap.erase(it);
-	return true;
-}
-
-void WServer::parseCallback(WSCallbackType type, void* p)
-{
-	switch(type) {
-	case OPEN:
-		if(callbackExists(ON_OPEN)) {
-			CBWrapper *param = new CBWrapper(ON_OPEN,p,this);
-#ifdef _WIN32
-			_beginthreadex(NULL,0,&WServer::callbackWrapper,param,NULL,NULL);
-#endif
-#ifdef __unix__
-			pthread_create(NULL,NULL,WServer::callbackWrapper,param);
-#endif
-		} else if(callbackExists(ON_OPEN_BLOCKING))
-			callbackMap[ON_OPEN_BLOCKING](p);
-		break;
-	case CLOSE:
-		if(callbackExists(ON_CLOSE)) {
-			CBWrapper *param = new CBWrapper(ON_CLOSE,p,this);
-#ifdef _WIN32
-			_beginthreadex(NULL,0,&WServer::callbackWrapper,param,NULL,NULL);
-#endif
-#ifdef __unix__
-			pthread_create(NULL,NULL,WServer::callbackWrapper,param);
-#endif
-		} else if(callbackExists(ON_CLOSE_BLOCKING))
-			callbackMap[ON_CLOSE_BLOCKING](p);
-		break;
-	case RECV:
-		if(callbackExists(ON_RECV)) {
-			CBWrapper *param = new CBWrapper(ON_RECV,p,this);
-#ifdef _WIN32
-			_beginthreadex(NULL,0,&WServer::callbackWrapper,param,NULL,NULL);
-#endif
-#ifdef __unix__
-			pthread_create(NULL,NULL,WServer::callbackWrapper,param);
-#endif
-		} else if(callbackExists(ON_RECV_BLOCKING))
-			callbackMap[ON_RECV_BLOCKING](p);
-
-		break;
-	default:
-		return;
-	}
-}
-
-#ifdef _WIN32
-unsigned __stdcall WServer::callbackWrapper(void* param)
-#elif defined __unix__
-void *WServer::callbackWrapper(void* param)
-#endif
-{
-		CBWrapper *p = (CBWrapper*)param;
-		WServer *self = p->self;
-
-		self->callbackMap[p->type](p->param);
-
-		delete p;
-		return 0;
-
-
-}
-
-void WServer::registerCallback(WSCallbackType type, void (*func)(void*))
-{
-	if(type == ON_OPEN || type == ON_OPEN_BLOCKING) {
-		if(callbackExists(ON_OPEN))
-			unregisterCallback(ON_OPEN);
-		else if(callbackExists(ON_OPEN_BLOCKING))
-			unregisterCallback(ON_OPEN_BLOCKING);
-		callbackMap.insert(
-			std::make_pair(type,func)
-		);
-	} else if(type == ON_CLOSE || type == ON_CLOSE_BLOCKING) {
-		if(callbackExists(ON_CLOSE))
-			unregisterCallback(ON_OPEN);
-		else if(callbackExists(ON_CLOSE_BLOCKING))
-			unregisterCallback(ON_CLOSE_BLOCKING);
-		callbackMap.insert(
-			std::make_pair(type,func)
-		);
-	} else if (type == ON_RECV || type == ON_RECV_BLOCKING) {
-		if(callbackExists(ON_RECV))
-			unregisterCallback(ON_RECV);
-		else if(callbackExists(ON_RECV_BLOCKING))
-			unregisterCallback(ON_RECV_BLOCKING);
-		callbackMap.insert(
-			std::make_pair(type,func)
-		);
-	} else
-		return;
-}
-
 WServer::~WServer()
 {
 #ifdef _WIN32
@@ -220,8 +111,6 @@ void WServer::CreateNewClient(WSClient *client)
 	pthread_create(&client->handle,NULL,WServer::clientThread,client);
 #endif
 
-	parseCallback(OPEN,NULL);
-
 	clients.push_back(client);
 	std::cout << "Client Connected with id of " << client->id << " {" << client->ip << "} ..." << std::endl;
 }
@@ -254,7 +143,6 @@ void *WServer::clientThread(void* param)
 		
 		if(recvBytes > 0) {
 			std::cout << "Received " << recvBytes << " bytes from client[" << client->id << "] {" << client->ip << "}.." << std::endl;
-			self->parseCallback(RECV,(void*)buff);
 		}
 		
 	} while(recvBytes > 0); 
@@ -277,8 +165,6 @@ void WServer::CloseClient(WSClient *client)
 #ifdef __unix__
 	close(client->sock);
 #endif
-
-	parseCallback(CLOSE,NULL);
 
 	std::vector<WSClient*>::iterator it;
 	for(it = clients.begin(); it != clients.end(); ++it) {
